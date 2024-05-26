@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 import pickle
-import csv
+import pandas as pd
 import numpy as np
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 import firebase_admin
@@ -52,6 +52,7 @@ def recommend():
 
     return render_template('recommend.html', data=data)
 
+
 @app.route('/rate_book/<book_id>', methods=['POST'])
 def rate(book_id):
     data = request.get_json()
@@ -62,24 +63,42 @@ def rate(book_id):
         rating = int(data['rating'])
     except ValueError:
         return jsonify({"error": "Rating must be an integer"}), 400
+
+    user_id = 276724 # TODO: get authenticated user id
+
+    old_rating = get_rating(user_id, book_id)
+    if old_rating is not None:
+        if old_rating == rating:
+            return jsonify({"error": "This book has alreay been rated"}), 400
+        else:
+            update_rating(user_id, book_id, rating)
+            return jsonify({"message": "Rating updated successfully", "User-ID": user_id, "ISBN": book_id, "New-Book-Rating": rating}), 200
+
+    save_rating(user_id, book_id, rating)
+    return jsonify({"message": "Rating saved successfully", "User-ID": user_id, "ISBN": book_id, "Book-Rating": rating}), 201
+
+
+def save_rating(user_id, book_id, rating):
+    new_rating = pd.DataFrame({'User-ID': [user_id], 'ISBN': [book_id], 'Book-Rating': [rating]})
+    new_rating.to_csv(ratings_csv, mode='a', header=False, index=False)
     
-    if is_book_rated(276724, book_id):
-        return jsonify({"error": "User has already rated this book"}), 400
 
-    with open(ratings_csv, 'a', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow([276724, book_id, rating])
-    csvfile.close() 
+def update_rating(user_id, book_id, rating):
+    df = pd.read_csv(ratings_csv)
+    df.loc[(df['User-ID'] == user_id) & (df['ISBN'] == book_id), 'Book-Rating'] = rating
+    df.to_csv(ratings_csv, index=False)
 
-    return jsonify({"message": "Rating saved successfully", "User-ID": 276724, "ISBN": book_id, "Book-Rating": rating}), 201
 
-def is_book_rated(user_id, book_id):
-    with open(ratings_csv, 'r', newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            if int(row['User-ID']) == user_id and row['ISBN'] == book_id:
-                return True
-    return False
+def get_rating(user_id, book_id):
+    try:
+        df = pd.read_csv(ratings_csv)
+        existing_rating = df.loc[(df['User-ID'] == user_id) & (df['ISBN'] == book_id), 'Book-Rating'].iloc[0]
+        return existing_rating
+    except FileNotFoundError:
+        return None
+    except IndexError:
+        return None
+
 
 if __name__ == '__main__':
     app.run(debug=True)
