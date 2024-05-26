@@ -1,7 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 import pickle
 import csv
 import numpy as np
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+import firebase_admin
+from firebase_admin import credentials, auth
+import json
 
 pt = pickle.load(open('pt.pkl', 'rb'))
 popular_df = pickle.load(open('popular.pkl', 'rb'))
@@ -32,7 +36,7 @@ def recommend_ui():
 def recommend():
     user_input = request.form.get('user_input')
     index = np.where(pt.index == user_input)[0][0]
-    similar_items = sorted(list(enumerate(similarity_scores[index])), key=lambda x: x[1], reverse=True)[1:5]
+    similar_items = sorted(list(enumerate(similarity_scores[index])), key=lambda x: x[1], reverse=True)[1:9]
 
     data = []
     for i in similar_items:
